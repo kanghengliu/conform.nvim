@@ -385,6 +385,17 @@ return {
         local idx = num_format
         log.debug("Injected format %s:%d:%d: %s", lang, start_lnum, end_lnum, formatter_names)
         log.trace("Injected format lines %s", input_lines)
+
+        -- ipython magics and shell commands
+        local pattern = "^(%s*[%%!].*)"
+        for index, line in ipairs(input_lines) do
+          if line:match(pattern) then
+            log.trace("Pattern Matched: %s", line)
+            table.remove(input_lines, index)
+            break
+          end
+        end
+
         local surrounding = remove_surrounding(input_lines, buf_lang)
         -- Create a temporary buffer. This is only needed because some formatters rely on the file
         -- extension to determine a run mode (see https://github.com/stevearc/conform.nvim/issues/194)
