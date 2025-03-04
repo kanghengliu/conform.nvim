@@ -315,7 +315,7 @@ return {
 
     local num_format = 0
     local tmp_bufs = {}
-    local formatter_cb = function(err, idx, region, input_lines, new_lines)
+    local formatter_cb = function(err, idx, region, input_lines, new_lines, magic_lines)
       if err then
         format_error = errors.coalesce(format_error, err)
         replacements[idx] = err
@@ -327,6 +327,18 @@ return {
         end
         if input_lines[#input_lines] == "" and new_lines[#new_lines] ~= "" then
           table.insert(new_lines, "")
+        end
+
+        -- Reinsert the ipython magic or shell command if it was removed
+        table.sort(magic_lines, function(a, b)
+          return a.index < b.index
+        end)
+        for _, magic in ipairs(magic_lines) do
+          if magic.line and magic.index then
+            -- Make sure we don't insert beyond the length of new_lines
+            local insert_index = math.min(magic.index, #new_lines + 1)
+            table.insert(new_lines, insert_index, magic.line)
+          end
         end
         replacements[idx] = { region[2], region[3], region[4], region[5], new_lines }
       end
@@ -387,12 +399,16 @@ return {
         log.trace("Injected format lines %s", input_lines)
 
         -- ipython magics and shell commands
-        local pattern = "^(%s*[%%!].*)"
-        for index, line in ipairs(input_lines) do
-          if line:match(pattern) then
-            log.trace("Pattern Matched: %s", line)
-            table.remove(input_lines, index)
-            break
+        local magic_lines = {}
+        if lang == "python" then
+          local pattern = "^(%s*[%%!].*)"
+          for index = #input_lines, 1, -1 do
+            local line = input_lines[index]
+            if line:match(pattern) then
+              log.trace("Pattern Matched: %s", line)
+              table.insert(magic_lines, { line = line, index = index })
+              table.remove(input_lines, index)
+            end
           end
         end
 
@@ -413,7 +429,7 @@ return {
           log.trace("Injected %s:%d:%d formatted lines %s", lang, start_lnum, end_lnum, new_lines)
           -- Preserve indentation in case the code block is indented
           restore_surrounding(new_lines, surrounding)
-          vim.schedule_wrap(formatter_cb)(err, idx, region, input_lines, new_lines)
+          vim.schedule_wrap(formatter_cb)(err, idx, region, input_lines, new_lines, magic_lines)
         end)
       end
     end
